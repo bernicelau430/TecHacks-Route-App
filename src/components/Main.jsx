@@ -18,6 +18,7 @@ class Main extends Component {
             showDirection: false,
             response: null,
             travelMode: 'DRIVING',
+            algorithmOption: 'FUEL_EFFICIENCY',
             origin: '',
             destination: '',
             query: false,
@@ -29,30 +30,134 @@ class Main extends Component {
         this.onClick = this.onClick.bind(this);
         this.directionsCallback = this.directionsCallback.bind(this);
         this.getPosition = this.getPosition.bind(this);
-        this.getTravelMode = this.getTravelMode.bind(this);
-		this.algorithm = this.algorithm.bind(this);
+        this.getAlgorithm = this.getAlgorithm.bind(this);
+		// this.algorithm = this.algorithm.bind(this);
+        this.fuelEfficientAlgorithm = this.fuelEfficientAlgorithm.bind(this);
+        this.fastestAlgorithm = this.fastestAlgorithm.bind(this);
+        this.distanceFactor = this.distanceFactor.bind(this);
+        this.stepsFactor = this.stepsFactor.bind(this);
+        this.elevationFactor = this.elevationFactor.bind(this);
     }
 
 		// This ensures we only make 1 request as more requests is redundant and we don't wanna waste our monthly credits. Also console.logs the API response.
-    directionsCallback(response) {
+    async directionsCallback(response) {
         this.setState({ query: false });
         if (response !== null) {
             if (response.status === 'OK') {
-                let manipulated_response = response;
-                manipulated_response = this.algorithm(manipulated_response);
+                let manipulated_response;
+                if (this.state.algorithmOption === 'FUEL_EFFICIENCY') {
+                    manipulated_response = await this.fuelEfficientAlgorithm(response);
+                    console.log(manipulated_response)
+                }
+                else {
+                    manipulated_response = this.fastestAlgorithm(response);
+                    console.log(manipulated_response)
+                }
+                // manipulated_response = this.algorithm(manipulated_response);
                 this.setState({ response: manipulated_response });
 								// Input your 2 locations and click submit. Right click and go to Chrome Developer Tools, and click console. You should be able to see the response you get from the Google Maps Api 
-								console.log(response);
             } else {
               console.log('response: ', response)
             }
         }
     }
-		// This is where you will implement the algorithm i.e manipulate new_response
-    algorithm(response) {
-				let new_response = response;
-        return new_response;
+
+    fastestAlgorithm(response) {
+        let returnedResponse = {...response};
+        let leastDuration = response.routes[0].legs[0].duration.value;
+        let bestRouteIndex = 0;
+        response.routes.forEach((route, idx) => {
+            let routeDuration = route.legs[0].duration.value;
+            if (routeDuration < leastDuration) {
+                leastDuration = routeDuration;
+                bestRouteIndex = idx;
+            }
+        });
+        returnedResponse.routes = [];
+        returnedResponse.routes.push(response.routes[bestRouteIndex]);
+        return returnedResponse;
     }
+
+    async fuelEfficientAlgorithm(response) {
+        let returnedResponse = {...response};
+        const newResponse = response.routes.map(async (route, idx) => {
+            let dFactor = this.distanceFactor(route);
+            let sFactor = this.stepsFactor(route);
+            const eFactor = await this.elevationFactor(route);
+            console.log(dFactor, sFactor, eFactor)
+            return dFactor * sFactor * eFactor;
+        });
+        return Promise.all(newResponse).then((values) => {
+            returnedResponse.routes = [];
+            returnedResponse.routes.push(response.routes[values.indexOf(Math.min(...values))]);
+            return returnedResponse;
+        })
+    }
+
+    distanceFactor(route) {
+        return route.legs[0].distance.value/route.legs[0].duration.value;
+    }
+
+    stepsFactor(route) {
+        let sumValue = 0;
+        route.legs[0].steps.forEach((step) => {
+            switch (step.maneuver) {
+                case('turn-right'):
+                    sumValue += 3;
+                    break;
+                case('turn-left'):
+                    sumValue += 3;
+                    break;
+                case('keep-right'):
+                    sumValue += 2;
+                    break;
+                case('keep-left'):
+                    sumValue += 2;
+                    break;
+                case('ramp-right'):
+                    sumValue += 2;
+                    break;
+                case('ramp-left'):
+                    sumValue += 2;
+                    break;
+                default:
+                    sumValue += 1;
+            }
+        })
+        return sumValue;
+    }
+
+    async elevationFactor(route) {
+        let url = 'https://elevation-api.io/api/elevation';
+        let difference = 1;
+        let points = [];
+        route.legs[0].steps.forEach((step) => {
+            points.push([step.start_location.lat(), step.start_location.lng()]);
+            points.push([step.end_location.lat(), step.end_location.lng()]);
+        })
+        const dataString = {
+            'points': points,
+        }
+        const request = new Request(url, {method: 'POST', headers: {'accept': 'application/json', 'content-type': 'application/json', 'elevation-api-key': 'U5d15-Yidw3pbEB00Wa8OOhLg1z2a3'}, body: JSON.stringify(dataString)})
+        const response = await fetch(request);
+        return response.json()
+            .then((dataList) => {
+                for(var i = 0; i < dataList.elevations.length - 1; i++) {
+                    if ((dataList.elevations[i + 1].elevation - dataList.elevations[i].elevation) > 0) {
+                        difference += (dataList.elevations[i + 1].elevation - dataList.elevations[i].elevation);
+                    }
+                }
+                return difference;
+            })
+    }
+		// This is where you will implement the algorithm i.e manipulate new_response
+    /* algorithm(response) {
+		let new_response = response;
+        new_response.routes.forEach((route) => {
+
+        });
+        return new_response;
+    } */
 		
     getOrigin (ref) {
         this.origin = ref
@@ -62,8 +167,8 @@ class Main extends Component {
         this.destination = ref
     }
 
-    getTravelMode(ref) {
-        this.travelMode = ref
+    getAlgorithm(ref) {
+        this.algorithmOption = ref
     }
 		// Sends the required options such as origin, destination, and travelMode. Setting query to true will allow the GoogleMaps component to run.
     onClick() {
@@ -72,7 +177,8 @@ class Main extends Component {
             () => ({
                 origin: this.origin.value,
                 destination: this.destination.value,
-                travelMode: this.travelMode.value,
+                travelMode: this.state.travelMode,
+                algorithmOption: this.algorithmOption.value,
                 query: true,
             })
           )
@@ -157,13 +263,13 @@ class Main extends Component {
                     </label>
                     <input id="DESTINATION" type="text" value={this.state.value} ref={this.getDestination} />
                     <label>
-                        Travel Mode:
+                        Option:
                     </label>
-                    <select id="TRAVELMODE" value={this.state.value} ref={this.getTravelMode} >
-                        <option value="DRIVING">Driving</option>
-                        <option value="BICYCLING">Biking</option>
-                        <option value="TRANSIT">Transit</option>
-                        <option value="WALKING">Walking</option>
+                    <select id="ALGORITHMOPTION" value={this.state.value} ref={this.getAlgorithm} >
+                        {/*<option value="DRIVING">Driving</option>
+                        <option value="BICYCLING">Biking</option>*/}
+                        <option value="FUEL_EFFICIENCY">Fuel Efficiency</option>
+                        <option value="FASTEST">Fastest</option>
                     </select>
                     <button type="button" onClick={this.onClick}>
                         Submit
