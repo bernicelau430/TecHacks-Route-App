@@ -1,11 +1,12 @@
 import React, { Component } from 'react';
 // This is the apiKey you stored earlier. Best practice is to keep it separated from your main file
 import apiKey from '../api/apiKeys';
+import {Spinner, Pane, TextInputField, SelectField, Button, toaster} from 'evergreen-ui';
 import { GoogleMap, LoadScript, DirectionsService, DirectionsRenderer } from '@react-google-maps/api';
 
 // This will indicate how large your map to be. You can input pixel amounts or percentages i.e. '100%',
 const containerStyle = {
-    width: '400px',
+    width: '100%',
     height: '400px'
   };
 
@@ -39,9 +40,11 @@ class Main extends Component {
         this.elevationFactor = this.elevationFactor.bind(this);
     }
 
+    componentDidMount() {
+        this.algorithmOption = this.state.algorithmOption
+    }
 		// This ensures we only make 1 request as more requests is redundant and we don't wanna waste our monthly credits. Also console.logs the API response.
     async directionsCallback(response) {
-        this.setState({ query: false });
         if (response !== null) {
             if (response.status === 'OK') {
                 let manipulated_response;
@@ -60,6 +63,7 @@ class Main extends Component {
               console.log('response: ', response)
             }
         }
+        this.setState({ query: false });
     }
 
     fastestAlgorithm(response) {
@@ -167,8 +171,8 @@ class Main extends Component {
         this.destination = ref
     }
 
-    getAlgorithm(ref) {
-        this.algorithmOption = ref
+    getAlgorithm(e) {
+        this.algorithmOption = e.target.value
     }
 		// Sends the required options such as origin, destination, and travelMode. Setting query to true will allow the GoogleMaps component to run.
     onClick() {
@@ -182,6 +186,9 @@ class Main extends Component {
                 query: true,
             })
           )
+        }
+        else {
+            toaster.danger('Something went wrong. Please enter a valid starting and ending location.')
         }
     }
 		// This is added because I thought it would interesting to include some geolocation. i.e The map will take in your current position if you give it your location before you input anything.
@@ -218,7 +225,7 @@ class Main extends Component {
                 <LoadScript
                     googleMapsApiKey={apiKey}
                 >
-                    {this.state.center != null &&
+                    {this.state.center != null ?
                         <GoogleMap
                             id='direction-example'
                             mapContainerStyle={containerStyle}
@@ -252,9 +259,28 @@ class Main extends Component {
                                 )
                             }
                         </GoogleMap>
+                        :
+                        <Pane display = 'flex' alignItems = 'center' justifyContent = 'center' height = {400} >
+                            <Spinner size = {64} />
+                        </Pane>
                     }
                 </LoadScript>
-                    <label>
+                    <Pane display = 'flex' elevation = {1} marginTop = {20} marginLeft = {20} flexDirection = 'column' padding = {25} background = 'tint2' alignItems = 'left' width = '50%' >
+                        <TextInputField label = 'Origin:' ref = {this.getOrigin} description = 'Beginning Location' />
+                        <TextInputField label = 'Destination:' ref = {this.getDestination} description = 'End Location' />
+                        <SelectField label = 'Algorithm Option:' description = 'Select Algorithm' onChange = {e => this.getAlgorithm(e)} >
+                            <option value = 'FUEL_EFFICIENCY'>
+                                Fuel Efficiency
+                            </option>
+                            <option value = 'FASTEST'>
+                                Fastest
+                            </option>
+                        </SelectField>
+                        <Button appearance = 'primary' width = '25%' justifyContent = 'center' isLoading = {this.state.query} onClick = {this.onClick} >
+                            Submit
+                        </Button>
+                    </Pane>
+                    {/* <label>
                         Origin:
                     </label>
                     <input id="ORIGIN" type="text" value={this.state.value} ref={this.getOrigin} />
@@ -265,15 +291,15 @@ class Main extends Component {
                     <label>
                         Option:
                     </label>
-                    <select id="ALGORITHMOPTION" value={this.state.value} ref={this.getAlgorithm} >
+                    <select id="ALGORITHMOPTION" value={this.state.value} ref={this.getAlgorithm} > */}
                         {/*<option value="DRIVING">Driving</option>
                         <option value="BICYCLING">Biking</option>*/}
-                        <option value="FUEL_EFFICIENCY">Fuel Efficiency</option>
+                        {/* <option value="FUEL_EFFICIENCY">Fuel Efficiency</option>
                         <option value="FASTEST">Fastest</option>
                     </select>
                     <button type="button" onClick={this.onClick}>
                         Submit
-                    </button>
+                    </button> */}
             </React.Fragment>
         )
     }
